@@ -29,6 +29,7 @@
     button.action { margin-top: 14px; padding: 9px 14px; background: #1d4ed8; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-right: 8px; }
     button.secondary { background: #475569; }
     button.success { background: #15803d; }
+    button.danger { background: #b91c1c; }
     .trace-box { background: #0f172a; color: #e2e8f0; padding: 14px; border-radius: 8px; font-family: Consolas, monospace; font-size: 13px; white-space: pre-wrap; overflow-x: auto; }
     .receipt { border: 1px dashed #64748b; padding: 12px; border-radius: 6px; background: #f8fafc; margin-top: 12px; }
   </style>
@@ -41,7 +42,7 @@
     <button id="tab-movies" class="tab-btn active" onclick="goToPage('movies')">1. Movies &amp; Showtimes (:8002)</button>
     <button id="tab-seats" class="tab-btn" onclick="goToPage('seats')">2. Seat Map &amp; Lock (:8002)</button>
     <button id="tab-checkout" class="tab-btn" onclick="goToPage('checkout')">3. Payment &amp; Booking (:8001 &rarr; :8004)</button>
-    <button id="tab-history" class="tab-btn" onclick="goToPage('history')">4. History &amp; Receipts (:8001 &amp; :8003)</button>
+    <button id="tab-history" class="tab-btn" onclick="goToPage('history')">4. History, Receipts &amp; Cancel (:8001 &amp; :8003)</button>
   </div>
 
   <!-- PAGE 1: FR1 -->
@@ -57,18 +58,15 @@
     <div class="server-badge">Handled by: Availability Service (http://127.0.0.1:8002) — FR2, FR3, FR4</div>
     <h2>Step 2: Pick Seats &amp; Lock</h2>
     <div id="seats-context" class="summary-banner"></div>
-
     <label>Showtime:
       <select id="seat-showtime-id" onchange="onShowtimeDropdownChange()">
         <option value="101">101 — Interstellar: Distributed Edition (RM 18.00)</option>
         <option value="102">102 — The Microservice Matrix (RM 20.00)</option>
       </select>
     </label>
-
     <button class="action" onclick="loadSeats()">Refresh Seat Map (:8002)</button>
     <button class="action secondary" onclick="lockSelectedSeats()">Lock Selected Seats (:8002)</button>
     <button class="action success" onclick="proceedToCheckout()">Continue to Checkout &rarr;</button>
-
     <p>
       Selected seats: <strong id="selected-seats-label">None</strong> |
       Estimated total: <strong id="seats-subtotal-label">RM 0.00</strong>
@@ -81,45 +79,38 @@
     <div class="server-badge">Handled by: Booking Service (:8001) &rarr; Availability (:8002), Payment (:8004), Notification (:8003) — FR5, FR7</div>
     <h2>Step 3: Checkout, Payment &amp; Booking</h2>
     <div id="checkout-context" class="summary-banner"></div>
-
     <label>Customer Email:
       <input id="cust-email" type="email" value="haziq@example.com" />
     </label>
-
     <label>Selected Showtime:
       <input id="checkout-showtime-display" type="text" readonly />
       <input id="checkout-showtime" type="hidden" value="101" />
     </label>
-
     <p><strong>Pick Seats (click to toggle, including BOOKED seats to test conflict):</strong></p>
     <div id="checkout-seat-picker" class="seat-grid"></div>
     <p>Chosen seats: <strong id="checkout-seats-label">None</strong></p>
-
     <label>Total Price (RM):
       <input id="checkout-price" type="number" step="0.01" value="0.00" readonly />
     </label>
-
     <label>Payment Method:
       <select id="payment-method">
         <option value="FPX Online">FPX Online</option>
         <option value="Credit/Debit Card">Credit/Debit Card</option>
       </select>
     </label>
-
     <label>Idempotency Key (reuse same key to test duplicate protection):
       <input id="idempotency-key" type="text" value="" />
     </label>
-
     <button class="action secondary" onclick="goToPage('seats')">&larr; Back to Seat Map</button>
     <button class="action secondary" onclick="generateNewKey()">Generate New Key</button>
     <button class="action" onclick="submitBooking()">Confirm &amp; Pay Booking (:8001 &rarr; :8004)</button>
     <div id="checkout-receipt" class="receipt" style="display:none;"></div>
   </div>
 
-  <!-- PAGE 4: FR8, FR9, FR10 -->
+  <!-- PAGE 4: FR8, FR9, FR10, FR11 -->
   <div id="history" class="page">
-    <div class="server-badge">Handled by: Booking Service (:8001) for History/Receipt &amp; Notification Service (:8003) for Email Logs — FR8, FR9, FR10</div>
-    <h2>Step 4: Booking History, Ticket Receipt &amp; Email Notifications</h2>
+    <div class="server-badge">Handled by: Booking Service (:8001) for History/Cancel &amp; Notification Service (:8003) for Email Logs — FR8, FR9, FR10, FR11</div>
+    <h2>Step 4: Booking History, Ticket Receipt &amp; Cancel</h2>
     <label>Search by Customer Email:
       <input id="search-email" type="text" value="haziq@example.com" />
     </label>
@@ -171,7 +162,6 @@
 
       document.getElementById("seats-context").innerHTML =
         `<strong>Showtime:</strong> ${info.movie_title} (ID: ${info.showtime_id}) — RM ${price.toFixed(2)} / seat`;
-
       document.getElementById("selected-seats-label").textContent =
         selectedSeats.length ? selectedSeats.join(", ") : "None";
       document.getElementById("seats-subtotal-label").textContent = `RM ${subtotal}`;
@@ -191,7 +181,6 @@
       document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
       document.getElementById(pageId).classList.add("active");
       document.getElementById(`tab-${pageId}`).classList.add("active");
-
       updateContextBanners();
       if (pageId === "movies") loadShowtimes();
       if (pageId === "seats") {
@@ -222,7 +211,6 @@
         const res = await fetch(url);
         const data = await res.json();
         logTrace("FR1 - List Showtimes", url, res.status, data);
-
         if (Array.isArray(data.showtimes) && data.showtimes.length) {
           showtimesCache = data.showtimes;
           const select = document.getElementById("seat-showtime-id");
@@ -231,7 +219,6 @@
           ).join("");
           select.value = String(selectedShowtimeId);
         }
-
         const container = document.getElementById("showtimes-list");
         container.innerHTML = "";
         (data.showtimes || []).forEach(st => {
@@ -270,13 +257,10 @@
         const res = await fetch(url);
         const data = await res.json();
         logTrace("FR2 - Load Seat Map", url, res.status, data);
-
         currentSeatsData = data.seats || [];
         updateContextBanners();
-
         const map = document.getElementById("seat-map");
         map.innerHTML = "";
-
         currentSeatsData.forEach(s => {
           const btn = document.createElement("button");
           btn.className = `seat-btn ${s.status}`;
@@ -297,7 +281,6 @@
         selectedSeats.push(seatNum);
       }
       updateContextBanners();
-
       document.querySelectorAll("#seat-map .seat-btn").forEach(btn => {
         const num = btn.textContent.split(" ")[0];
         btn.classList.toggle("selected", selectedSeats.includes(num));
@@ -308,12 +291,10 @@
     function renderCheckoutSeatPicker() {
       const picker = document.getElementById("checkout-seat-picker");
       picker.innerHTML = "";
-
       if (!currentSeatsData.length) {
         picker.innerHTML = `<p>Open Step 2 to load live seat availability for Showtime ${selectedShowtimeId}.</p>`;
         return;
       }
-
       currentSeatsData.forEach(s => {
         const btn = document.createElement("button");
         btn.type = "button";
@@ -365,7 +346,6 @@
         total_price: Number(document.getElementById("checkout-price").value),
         payment_method: document.getElementById("payment-method").value
       };
-
       const url = `${BOOKING_API}/api/v1/bookings`;
       try {
         const res = await fetch(url, {
@@ -378,7 +358,6 @@
         });
         const data = await res.json();
         logTrace("FR5 & FR7 - Create Booking + Payment", url, res.status, data);
-
         const box = document.getElementById("checkout-receipt");
         box.style.display = "block";
         if (res.status === 201) {
@@ -387,8 +366,7 @@
             Booking ID: ${data.booking_id} | Status: ${data.status}<br/>
             Payment ID: ${data.payment_id} | Total: RM ${Number(data.total_amount).toFixed(2)}<br/>
             Seats: ${(data.seats || []).join(", ")} | Email Receipt: ${data.receipt_status}<br/>
-            <button class="action success" onclick="openHistoryForBooking('${email.replace(/'/g, "\\'")}', '${(data.booking_id || "").replace(/'/g, "\\'")}')">View in Step 4 (History &amp; Receipts) &rarr;</button>
-          `;
+            <button class="action success" onclick="openHistoryForBooking('${email.replace(/'/g, "\\'")}', '${(data.booking_id || "").replace(/'/g, "\\'")}')">View in Step 4 (History &amp; Receipts) &rarr;</button>`;
           selectedSeats = [];
           updateContextBanners();
           renderCheckoutSeatPicker();
@@ -413,26 +391,42 @@
       const params = new URLSearchParams();
       if (bookingId) params.set("booking_id", bookingId);
       else if (email) params.set("email", email);
-
       const url = `${BOOKING_API}/api/v1/bookings?${params.toString()}`;
       try {
         const res = await fetch(url);
         const data = await res.json();
         logTrace("FR8 & FR10 - Booking History & Receipt", url, res.status, data);
-
         const div = document.getElementById("history-results");
         div.innerHTML = "<h4>Bookings &amp; Ticket Receipts (:8001)</h4>";
         (data.bookings || []).forEach(b => {
+          const cancelBtn = b.status === "CONFIRMED"
+            ? `<br/><button class="action danger" onclick="cancelBooking('${b.booking_id}')">Cancel Booking (:8001 &rarr; :8002)</button>`
+            : "";
           div.innerHTML += `
             <div class="card">
               <strong>Booking: ${b.booking_id}</strong> (${b.status})<br/>
               Email: ${b.customer_email} | Showtime: ${b.showtime_id}<br/>
               Seats: ${(b.seats || []).join(", ")} | Amount: RM ${Number(b.total_amount).toFixed(2)}<br/>
               Payment ID: ${b.payment_id} | Receipt Status: ${b.receipt_status} | Time: ${b.created_at}
+              ${cancelBtn}
             </div>`;
         });
       } catch (err) {
         logTraceError("FR8 & FR10 - Booking History & Receipt", url, err);
+      }
+    }
+
+    async function cancelBooking(bookingId) {
+      const url = `${BOOKING_API}/api/v1/bookings/${bookingId}/cancel`;
+      try {
+        const res = await fetch(url, { method: "POST" });
+        const data = await res.json();
+        logTrace("FR11 - Cancel Booking & Release Seats", url, res.status, data);
+        if (res.ok) {
+          await searchBookings();
+        }
+      } catch (err) {
+        logTraceError("FR11 - Cancel Booking & Release Seats", url, err);
       }
     }
 
@@ -442,7 +436,6 @@
         const res = await fetch(url);
         const data = await res.json();
         logTrace("FR9 - Email Notification Log", url, res.status, data);
-
         const div = document.getElementById("notification-results");
         div.innerHTML = "<h4>Sent Email Receipt Logs (:8003)</h4>";
         (data.notifications || []).forEach(n => {

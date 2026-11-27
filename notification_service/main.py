@@ -1,10 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import sqlite3
 from datetime import datetime
 
-app = FastAPI(title="Notification Service", version="2.0")
+app = FastAPI(title="Notification Service", version="2.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -15,6 +15,7 @@ app.add_middleware(
 
 DATABASE = "notification.db"
 
+
 class NotifyRequest(BaseModel):
     booking_id: str
     customer_email: str = "customer@example.com"
@@ -23,6 +24,7 @@ class NotifyRequest(BaseModel):
     seats: list[str]
     total_amount: float
     payment_id: str = "N/A"
+
 
 def init_db():
     conn = sqlite3.connect(DATABASE)
@@ -40,24 +42,40 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 init_db()
 
-# FR9: Send payment & ticket receipt via email (simulated & logged)
+
+# FR9: Send payment, ticket, or cancellation receipt via email (simulated & logged)
 @app.post("/api/v1/notify")
 def send_notification(payload: NotifyRequest):
     sent_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    msg = (
-        f"Receipt Emailed to {payload.customer_email} | Booking {payload.booking_id} "
-        f"| Payment {payload.payment_id} | Showtime {payload.showtime_id} "
-        f"| Seats {', '.join(payload.seats)} | Paid RM {payload.total_amount:.2f}"
-    )
-    print(f"[EMAIL RECEIPT] {msg}")
+    clean_email = payload.customer_email.strip().lower()
+    seats_text = ", ".join(s.strip().upper() for s in payload.seats)
+
+    if payload.status.upper() == "CANCELLED":
+        msg = (
+            f"Cancellation & Refund Notice Emailed to {clean_email} | Booking {payload.booking_id} "
+            f"| Payment {payload.payment_id} | Showtime {payload.showtime_id} "
+            f"| Released Seats {seats_text} | Amount RM {payload.total_amount:.2f}"
+        )
+    else:
+        msg = (
+            f"Receipt Emailed to {clean_email} | Booking {payload.booking_id} "
+            f"| Payment {payload.payment_id} | Showtime {payload.showtime_id} "
+            f"| Seats {seats_text} | Paid RM {payload.total_amount:.2f}"
+        )
+
+    print(f"[EMAIL LOG] {msg}")
 
     conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO notifications (booking_id, customer_email, payment_id, message, sent_at) VALUES (?, ?, ?, ?, ?)",
-        (payload.booking_id, payload.customer_email, payload.payment_id, msg, sent_at)
+        """
+        INSERT INTO notifications (booking_id, customer_email, payment_id, message, sent_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (payload.booking_id, clean_email, payload.payment_id, msg, sent_at),
     )
     conn.commit()
     conn.close()
@@ -66,18 +84,25 @@ def send_notification(payload: NotifyRequest):
         "handled_by": "Notification Service (Port 8003)",
         "status": "EMAIL_SENT",
         "booking_id": payload.booking_id,
-        "sent_at": sent_at
+        "sent_at": sent_at,
     }
 
+
 @app.get("/api/v1/notifications")
-def list_notifications():
+def list_notifications(email: str | None = Query(None)):
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM notifications ORDER BY id DESC LIMIT 20")
+    if email:
+        cursor.execute(
+            "SELECT * FROM notifications WHERE LOWER(customer_email) = ? ORDER BY id DESC LIMIT 20",
+            (email.strip().lower(),),
+        )
+    else:
+        cursor.execute("SELECT * FROM notifications ORDER BY id DESC LIMIT 20")
     rows = cursor.fetchall()
     conn.close()
     return {
         "handled_by": "Notification Service (Port 8003)",
-        "notifications": [dict(r) for r in rows]
+        "notifications": [dict(r) for r in rows],
     }

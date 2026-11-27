@@ -171,15 +171,28 @@ def confirm_seats(payload: SeatActionRequest):
     }
 
 # Release locked seats if checkout is cancelled or fails
+# Release locked or booked seats (on failed checkout or booking cancellation)
 @app.post("/api/v1/availability/release")
 def release_seats(payload: SeatActionRequest):
     conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
+    released = []
     for seat in payload.seats:
+        clean_seat = seat.strip().upper()
         cursor.execute(
-            "UPDATE seats SET status = 'AVAILABLE' WHERE showtime_id = ? AND seat_number = ? AND status = 'LOCKED'",
-            (payload.showtime_id, seat)
+            """
+            UPDATE seats
+            SET status = 'AVAILABLE'
+            WHERE showtime_id = ? AND seat_number = ? AND status IN ('LOCKED', 'BOOKED')
+            """,
+            (payload.showtime_id, clean_seat),
         )
+        if cursor.rowcount > 0:
+            released.append(clean_seat)
     conn.commit()
     conn.close()
-    return {"handled_by": "Availability Service (Port 8002)", "status": "RELEASED", "seats": payload.seats}
+    return {
+        "handled_by": "Availability Service (Port 8002)",
+        "status": "RELEASED",
+        "seats": released,
+    }
